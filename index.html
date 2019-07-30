@@ -1,0 +1,154 @@
+<div id="app">
+    <h3 v-text="user"></h3>
+    <hr />
+    <p v-text="target"></p>    
+    <div class="container">            
+        <div class="message_container">
+            <div class="message_list">
+                <ul style="list-style-type:none;">
+                    <li :class="{ 'from-me': (item.sender == 'me'), 'from-target': (item.sender == 'target') }" v-for="item in messageList">{{ item.message }}</li>
+                </ul>  
+            </div>
+            <div style="display:flex;">
+                <input type="text" v-model="message" style="flex-grow:2"/>
+                <button @click="send" style="flex-grow:1">Send</button>
+            </div>
+
+        </div>
+        
+        <div class="userlist_container">            
+            <h4>User List</h4>
+            <ul style="list-style-type:none;">
+                <li @click="selectUser(user)" v-for="user in onlineUsers">{{ user.username }} - {{ user.message_count}}</li>
+            </ul>            
+        </div>
+
+    </div>    
+</div>
+
+<style>
+    .container {
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .message_list .from-target {
+        text-align: left;
+    }
+
+    .message_list .from-me {
+        text-align: right;
+    }
+
+    .message_container {
+        border: 1px solid black;
+    }
+
+    .message_container .message_list {
+        border: 1px solid black;
+        min-height: 200px;
+        min-width: 500px;
+    }
+
+    .userlist_container {
+        border: 1px solid black;
+        min-width: 200px;
+    }
+
+    .userlist_container li {
+        border: 1px solid blue;
+        padding: 5px;
+        cursor: pointer;
+    }
+
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.19.0/axios.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+
+<script>
+  
+  var socket = io.connect('http://192.168.2.24:8080');
+    
+    var app = new Vue({
+        el: '#app',
+        mounted() {
+
+            axios.get('/online-users')
+            .then((res) =>  {
+                console.log(res.data)                
+                this.onlineUsers = res.data            
+            })
+
+            this.user = prompt('who are you')
+            
+            socket.emit('new_user', {
+                username: this.user,                
+            })
+
+            socket.on('online_users', function(users) {
+                    console.log(users)
+                    onlineUsers = users
+            })
+
+            socket.on('new_user', (data) => {
+                data.message_count = 0
+                this.onlineUsers.push(data)
+                console.log('new_user', data)
+            })
+
+            socket.on('message_received', function(data){
+                console.log('message_received', data)
+            })        
+
+            socket.on('hey', (data) => {
+                this.messageList.push({
+                    message: data.message,
+                    sender: "target"
+                })
+
+                var result = this.onlineUsers.filter(obj => {
+                    return obj._id === data.from
+                })
+
+                var from = result[0]
+                from.message_count++;
+
+            })
+
+            socket.on('disconnected', (socketId) => {
+                console.log('disconnected', socketId)
+                let removeIndex = this.onlineUsers.map((item) => item._id).indexOf(socketId);
+                this.onlineUsers.splice(removeIndex, 1);
+            })
+
+        },        
+        data (){
+            return {
+                message: 'Hello Vue!',
+                user: null,
+                onlineUsers: [],
+                target: null,
+                messageList: []               
+            }
+        },
+        methods: {            
+            send: function() {          
+                socket.emit('new_message', {
+                    to: this.target._id,
+                    message: this.message
+                })
+                this.messageList.push({
+                    message: this.message,
+                    sender: 'me'
+                })
+            },
+            selectUser: function(user) {                
+                console.log('user selected', user)
+                this.target = user
+            }
+        }
+})
+
+</script>
